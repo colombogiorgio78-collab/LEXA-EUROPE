@@ -1,0 +1,151 @@
+import streamlit as st
+import fitz  # PyMuPDF per leggere i PDF
+import google.generativeai as genai
+
+# --- 1. CONFIGURAZIONE ESTETICA PROFESSIONALE ---
+st.set_page_config(
+    page_title="LEXA EUROPE - Legal AI Intelligence",
+    page_icon="⚖️",
+    layout="wide"
+)
+
+# CSS personalizzato per rendere l'app elegante (Blu Navy e Bianco)
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        height: 3.5em;
+        background-color: #1E3A8A;
+        color: white;
+        font-weight: bold;
+        border: none;
+        transition: 0.3s;
+    }
+    .stButton>button:hover { background-color: #2563EB; }
+    .report-card {
+        padding: 25px;
+        border-radius: 12px;
+        background-color: white;
+        border: 1px solid #e0e0e0;
+        box-shadow: 2px 2px 15px rgba(0,0,0,0.05);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. BARRA LATERALE (CONFIGURAZIONE) ---
+with st.sidebar:
+    st.title("🛡️ LEXA PANEL")
+    st.subheader("Configurazione AI")
+    # Campo per la chiave di Google Gemini
+    api_key = st.text_input("Gemini API Key", type="password", help="Ottienila su aistudio.google.com")
+    
+    st.divider()
+    
+    # Selettore per l'espansione europea
+    st.subheader("Giurisdizione")
+    jurisdiction = st.selectbox(
+        "Seleziona la Legge Applicabile",
+        [
+            "Italia (Codice Civile / LDA)", 
+            "Unione Europea (Direttive Generali)", 
+            "Francia (Code Civil)", 
+            "Spagna (Código Civil)", 
+            "International (Common Law/English)"
+        ]
+    )
+    
+    st.divider()
+    st.caption("LEXA analizza i contratti adattando i controlli alle leggi locali della nazione selezionata.")
+
+# --- 3. INTERFACCIA PRINCIPALE ---
+st.title("⚖️ LEXA EUROPE")
+st.markdown("### *Analisi Legale Istantanea con Intelligenza Artificiale*")
+
+# Creazione di due colonne (Input a sinistra, Risultato a destra)
+col_in, col_out = st.columns([1, 1], gap="large")
+
+with col_in:
+    st.subheader("📂 Caricamento Documento")
+    
+    # Scelta tra caricamento file o testo manuale
+    input_mode = st.radio("Scegli come inserire il contratto:", ["Carica file PDF", "Incolla testo / Fai domanda"])
+    
+    testo_da_analizzare = ""
+    
+    if input_mode == "Carica file PDF":
+        uploaded_file = st.file_uploader("Trascina qui il file PDF del contratto", type="pdf")
+        if uploaded_file:
+            with st.spinner("Estrazione testo dal PDF..."):
+                doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+                testo_da_analizzare = "".join([p.get_text() for p in doc])
+                st.success(f"PDF caricato correttamente ({len(testo_da_analizzare)} caratteri).")
+    else:
+        testo_da_analizzare = st.text_area("Incolla qui il testo del contratto o descrivi il problema legale:", height=300)
+
+# --- 4. MOTORE DI ANALISI (AI) ---
+with col_out:
+    st.subheader("📊 Report dell'Analisi")
+    
+    if st.button("🚀 AVVIA ANALISI PROFESSIONALE"):
+        if not api_key:
+            st.error("⚠️ Inserisci la tua Gemini API Key nella barra laterale per attivare LEXA!")
+        elif not testo_da_analizzare:
+            st.warning("⚠️ Carica un contratto o incolla del testo per procedere.")
+        else:
+            try:
+                # Configurazione del modello Gemini
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # Istruzioni segrete per l'AI (Prompt Engineering)
+                prompt_istruzioni = f"""
+                Agisci come un avvocato Senior esperto in diritto internazionale e tecnologico.
+                Il tuo compito è analizzare il contratto fornito basandoti sulla legge di: {jurisdiction}.
+                
+                Crea un report professionale strutturato in questo modo (usa Markdown):
+                
+                # 🚩 VALUTAZIONE RISCHIO: [Voto da 1 a 100]
+                
+                ## 📝 SINTESI DELL'ACCORDO
+                [Spiega in modo semplice cosa prevede questo documento]
+                
+                ## ⚖️ PROPRIETÀ INTELLETTUALE (IP)
+                [Verifica chi possiede il codice o l'opera. Se Italia, cita l'Art. 12-bis LDA. Controlla se la cessione è chiara o se ci sono rischi di 'hold-up'.]
+                
+                ## ❌ CLAUSOLE VESSATORIE O CRITICHE
+                [Evidenzia penali, tempi di recesso troppo brevi o fori competenti scomodi.]
+                
+                ## 🛡️ SUGGERIMENTI DI RISCRITTURA
+                [Fornisci il testo esatto di come dovrebbero essere scritte le clausole per proteggere l'utente.]
+                
+                ## 🇪🇺 PRIVACY E GDPR
+                [Controlla se il trattamento dei dati è a norma europea.]
+                
+                ---
+                TESTO DEL CONTRATTO:
+                {testo_da_analizzare[:25000]} 
+                """
+                
+                with st.spinner("LEXA sta studiando il caso..."):
+                    # Chiamata a Gemini
+                    response = model.generate_content(prompt_istruzioni)
+                    
+                    # Mostra il report in un box elegante
+                    st.markdown(f"<div class='report-card'>{response.text}</div>", unsafe_allow_html=True)
+                    
+                    # Pulsante per scaricare il risultato
+                    st.download_button(
+                        label="📥 Scarica Report di Analisi (TXT)",
+                        data=response.text,
+                        file_name="Analisi_LEXA_Europe.txt",
+                        mime="text/plain"
+                    )
+                    
+            except Exception as e:
+                st.error(f"Si è verificato un errore tecnico: {str(e)}")
+
+# --- 5. FOOTER LEGALE ---
+st.divider()
+st.caption("© 2024 LEXA EUROPE - Startup Legal Tech | Disclaimer: L'analisi fornita dall'intelligenza artificiale non sostituisce il parere di un avvocato professionista.")
